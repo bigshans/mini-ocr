@@ -1,0 +1,34 @@
+# Maintainer: mini-ocr contributors
+pkgname=mini-ocr
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Lightweight screenshot and image OCR for KDE"
+arch=('x86_64')
+url="https://github.com/bigshans/mini-ocr"
+license=('MIT')
+depends=('qt6-base' 'opencv' 'spectacle' 'tesseract')
+makedepends=('cmake' 'gcc' 'pkgconf')
+optdepends=(
+  'wl-clipboard: reliable automatic clipboard copy on Wayland'
+  'tesseract-data-chi_sim: Tesseract simplified Chinese language data'
+  'tesseract-data-eng: Tesseract English language data'
+)
+install='mini-ocr.install'
+source=("mini-ocr-$pkgver.tar.gz")
+sha256sums=('SKIP')  # local build; for AUR use the real sha256
+options=('!debug')
+
+build() {
+  cmake -S "$srcdir/mini-ocr-$pkgver" -B "$srcdir/build" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build "$srcdir/build" -j"$(nproc)"
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install "$srcdir/build"
+  install -Dm644 "$srcdir/mini-ocr-$pkgver/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$srcdir/mini-ocr-$pkgver/README.md" \
+    "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

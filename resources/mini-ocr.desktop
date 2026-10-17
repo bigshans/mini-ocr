@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Mini OCR
+GenericName=Screenshot OCR
+Comment=Select a screen region and copy the recognized text
+Comment[zh_CN]=截图选区并复制识别出的文字
+Exec=mini-ocr
+Icon=mini-ocr
+Terminal=false
+Categories=Utility;Graphics;
+Keywords=OCR;screenshot;text;截图;识别;
+StartupNotify=false

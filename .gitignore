@@ -1,0 +1,10 @@
+build/
+models/*.onnx
+models/*.txt
+*.user
+build-windows/
+dist/
+packaging/*.pkg.tar.*
+packaging/*.tar.gz
+packaging/src/
+packaging/pkg/

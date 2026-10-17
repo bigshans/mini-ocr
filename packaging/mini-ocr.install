@@ -1,0 +1,7 @@
+post_install() {
+  echo "Mini OCR installed."
+  echo "Bind a global shortcut in KDE System Settings to: /usr/bin/mini-ocr capture"
+}
+post_upgrade() {
+  post_install
+}
