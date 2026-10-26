@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Sql Concurrent Network)
+if(UNIX AND NOT APPLE)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+endif()
 find_package(OpenCV REQUIRED COMPONENTS core imgproc dnn imgcodecs)
 if(TARGET opencv_geometry)
     list(APPEND OpenCV_LIBS opencv_geometry)
@@ -55,6 +58,9 @@ target_link_libraries(mini-ocr PRIVATE
     Qt6::Widgets Qt6::Sql Qt6::Concurrent Qt6::Network
     ${OpenCV_LIBS}
 )
+if(UNIX AND NOT APPLE)
+    target_link_libraries(mini-ocr PRIVATE Qt6::DBus)
+endif()
 
 if(WIN32)
     message(STATUS "Tesseract backend disabled on Windows (pending vcpkg/tessdata integration)")

@@ -11,6 +11,12 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#ifdef Q_OS_LINUX
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusMessage>
+#include <QDBusVariant>
+#endif
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -55,10 +61,15 @@ QString findModelDir(const QString& preferred = QString()) {
 #endif
 
     for (const QString& dir : candidates) {
-        if (QFileInfo::exists(dir + QStringLiteral("/ch_PP-OCRv5_det_mobile.onnx")) &&
-            QFileInfo::exists(dir + QStringLiteral("/ch_PP-OCRv5_rec_mobile.onnx")) &&
-            QFileInfo::exists(dir + QStringLiteral("/ppocrv5_dict.txt"))) {
-            return QDir(dir).absolutePath();
+        // canonicalFilePath() resolves symlinks such as /bin -> /usr/bin before
+        // collapsing "..", which absolutePath() does purely lexically and would
+        // otherwise turn /bin/../share into the nonexistent /share.
+        const QString canonical = QFileInfo(dir).canonicalFilePath();
+        if (canonical.isEmpty()) continue;
+        if (QFileInfo::exists(canonical + QStringLiteral("/ch_PP-OCRv5_det_mobile.onnx")) &&
+            QFileInfo::exists(canonical + QStringLiteral("/ch_PP-OCRv5_rec_mobile.onnx")) &&
+            QFileInfo::exists(canonical + QStringLiteral("/ppocrv5_dict.txt"))) {
+            return canonical;
         }
     }
     return {};
@@ -107,6 +118,39 @@ QImage loadImageFile(const QString& path) {
     QImageReader reader(path);
     reader.setAutoTransform(true);
     return reader.read();
+}
+
+// The KDE status notifier watcher and its host (plasmashell) are usually
+// started at the same time as XDG autostart applications. Creating the tray
+// icon before the host is ready makes KStatusNotifierItem give up permanently,
+// so only show the icon once the SNI host is actually accepting items.
+bool trayHostReady() {
+#ifdef Q_OS_LINUX
+    auto* bus = QDBusConnection::sessionBus().interface();
+    if (bus && bus->isServiceRegistered(QStringLiteral("org.kde.StatusNotifierWatcher"))) {
+        QDBusMessage request = QDBusMessage::createMethodCall(
+            QStringLiteral("org.kde.StatusNotifierWatcher"),
+            QStringLiteral("/StatusNotifierWatcher"),
+            QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("Get"));
+        request << QStringLiteral("org.kde.StatusNotifierWatcher")
+                << QStringLiteral("IsStatusNotifierHostRegistered");
+        const QDBusMessage reply = QDBusConnection::sessionBus().call(
+            request, QDBus::Block, 500);
+        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
+            return reply.arguments().first().value<QDBusVariant>().variant().toBool();
+        }
+        return false;
+    }
+
+    // On Plasma, wait for kded to export the watcher instead of letting Qt
+    // create a tray icon that could never register.
+    const QByteArray desktop = qgetenv("XDG_CURRENT_DESKTOP");
+    if (desktop.contains("KDE") || !qEnvironmentVariableIsEmpty("KDE_FULL_SESSION")) {
+        return false;
+    }
+#endif
+    return QSystemTrayIcon::isSystemTrayAvailable();
 }
 
 struct OcrResult {
@@ -261,6 +305,9 @@ public:
 
 private:
     void setupTray() {
+        if (trayConfigured_) return;
+        trayConfigured_ = true;
+
         tray_.setIcon(makeAppIcon());
         tray_.setToolTip(QStringLiteral("Mini OCR — 截图识别"));
         QApplication::setWindowIcon(makeAppIcon());
@@ -296,7 +343,26 @@ private:
                 });
 
         tray_.setContextMenu(menu);
+        ensureTrayVisible();
+    }
+
+    void ensureTrayVisible() {
+        if (tray_.isVisible()) return;
+
+        if (!trayHostReady()) {
+            if (!trayRetryTimer_) {
+                trayRetryTimer_ = new QTimer(this);
+                trayRetryTimer_->setInterval(1000);
+                connect(trayRetryTimer_, &QTimer::timeout, this,
+                        [this] { ensureTrayVisible(); });
+            }
+            if (!trayRetryTimer_->isActive()) trayRetryTimer_->start();
+            return;
+        }
+
+        if (trayRetryTimer_) trayRetryTimer_->stop();
         tray_.show();
+        updateTrayTooltip();
     }
 
     bool setupServer() {
@@ -679,6 +745,8 @@ private:
     std::shared_ptr<IOcrBackend> backend_;
     HistoryStore history_;
     QSystemTrayIcon tray_;
+    QTimer* trayRetryTimer_ = nullptr;
+    bool trayConfigured_ = false;
     std::unique_ptr<GlobalHotkey> hotkey_;
     QLocalServer* server_ = nullptr;
     QAction* autoCopyAction_ = nullptr;
