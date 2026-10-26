@@ -273,7 +273,7 @@ sudo cmake --install build --prefix /usr
 ```
 
 - API Key：<https://cloud.siliconflow.cn/account/ak>
-- SiliconFlow 目前把 DeepSeek-OCR 标为限免。
+- SiliconFlow 目前把 DeepSeek-OCR 标为限免，但账户余额不足时 API 仍会返回 **HTTP 402**（`code 30001, Sorry, your account balance is insufficient`）。如果遇到这个错误，需要充值/完成实名，或改用 DeepSeek 官方预设。
 - 这是专门的 OCR 权重，纯文本提取用 `Free OCR.`；Markdown/表格可改成 `<image>\n<|grounding|>Convert the document to markdown.`。
 - DeepSeek-OCR 官方 raw prompt 是 `<image>\nFree OCR.`；如果服务端不自动插入图片占位符，手动加上 `<image>`。
 

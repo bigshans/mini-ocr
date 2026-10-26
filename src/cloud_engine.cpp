@@ -28,6 +28,15 @@ QString jsonError(const QJsonObject& root) {
         return message;
     }
     if (error.isString()) return error.toString();
+
+    // Some OpenAI-compatible providers (e.g. SiliconFlow) return a top-level
+    // { "code": ..., "message": ... } instead of an "error" object.
+    const QString message = root.value(QStringLiteral("message")).toString();
+    if (!message.isEmpty()) return message;
+    const QJsonValue code = root.value(QStringLiteral("code"));
+    if (!code.isUndefined() && !code.isNull()) {
+        return QStringLiteral("code %1").arg(code.toVariant().toString());
+    }
     return {};
 }
 
@@ -171,7 +180,9 @@ QVector<OcrLine> CloudOcrEngine::recognize(const cv::Mat& bgr, QString* error) {
         if (error) *error = QStringLiteral("云端 OCR 请求超时（%1 秒）").arg(timeoutSec_);
         return lines;
     }
-    if (networkError != QNetworkReply::NoError) {
+    // HTTP 4xx/5xx also sets QNetworkReply::error(), but we still want to
+    // parse the provider's JSON body to show the real reason (401/402/429...).
+    if (networkError != QNetworkReply::NoError && status == 0) {
         if (error) {
             *error = QStringLiteral("云端 OCR 网络错误：%1").arg(networkErrorText);
         }
@@ -193,11 +204,30 @@ QVector<OcrLine> CloudOcrEngine::recognize(const cv::Mat& bgr, QString* error) {
     const QString serviceError = jsonError(root);
     if (status < 200 || status >= 300 || !serviceError.isEmpty()) {
         if (error) {
-            *error = QStringLiteral("云端 OCR 失败（HTTP %1）：%2")
-                         .arg(status)
-                         .arg(serviceError.isEmpty()
-                                  ? QString::fromUtf8(body.left(400))
-                                  : serviceError);
+            const QString raw = serviceError.isEmpty()
+                                    ? QString::fromUtf8(body.left(400))
+                                    : serviceError;
+            QString hint;
+            if (status == 401) {
+                hint = QStringLiteral("API Key 无效或没有访问权限");
+            } else if (status == 402 ||
+                       raw.contains(QStringLiteral("balance"), Qt::CaseInsensitive)) {
+                hint = QStringLiteral(
+                    "账户余额不足。SiliconFlow 的模型页面即使标注“限免”，"
+                    "API 仍可能要求账户有可用余额或完成实名认证；"
+                    "请充值/实名，或改用 DeepSeek 官方 deepseek-flash");
+            } else if (status == 403) {
+                hint = QStringLiteral("权限不足，可能需要实名认证或开通该模型");
+            } else if (status == 404) {
+                hint = QStringLiteral("模型或接口不存在，请检查服务地址和模型名");
+            } else if (status == 429) {
+                hint = QStringLiteral("请求过于频繁，请稍后重试");
+            }
+            *error = hint.isEmpty()
+                         ? QStringLiteral("云端 OCR 失败（HTTP %1）：%2").arg(status).arg(raw)
+                         : QStringLiteral("云端 OCR 失败（HTTP %1）：%2；服务端信息：%3")
+                               .arg(status)
+                               .arg(hint, raw);
         }
         return lines;
     }

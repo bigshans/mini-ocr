@@ -306,8 +306,8 @@ SettingsDialog::SettingsDialog(const AppSettings& current, const QString& effect
 
     auto* cloudHint = new QLabel(
         QStringLiteral("DeepSeek 官方用 deepseek-flash（通用视觉）；"
-                       "SiliconFlow 托管专门的 DeepSeek-OCR。图片会上传，"
-                       "Key 按预设分别保存，不会混用；API Key 以明文保存在本地配置。"
+                       "SiliconFlow 托管专门的 DeepSeek-OCR（页面标限免，但余额不足会返回 402）。"
+                       "图片会上传，Key 按预设分别保存，不会混用；API Key 以明文保存在本地配置。"
                        "<a href=\"https://platform.deepseek.com/api_keys\">DeepSeek Key</a> · "
                        "<a href=\"https://cloud.siliconflow.cn/account/ak\">SiliconFlow Key</a>"),
         cloudPanel_);
