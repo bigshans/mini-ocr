@@ -7,6 +7,8 @@
 - 截图选区：调用 KDE 自带 Spectacle，选区体验和系统截图一致
 - OCR 引擎可选：PP-OCRv5（本地默认）、Tesseract（本地可选）、DeepSeek（云端）
 - 结果窗口：可编辑、自动复制、支持暗色/亮色截图
+- 一键翻译：结果窗口和批量窗口内置翻译，支持 Google 免费接口、MyMemory、
+  LibreTranslate 自托管和 DeepSeek（复用云端 Key）
 - 独立的图片 OCR 窗口：拖拽/添加图片、移除、清空、开始识别
 - 批量 OCR：队列、进度、取消、逐张预览、复制当前/全部、导出 TXT
 - 设置界面：自动复制、置信度阈值、历史条数、模型目录、开机自启
@@ -87,6 +89,7 @@ X-KDE-autostart-after=panel
 - PP-OCR 模型目录（修改后立即重新加载）
 - Tesseract 语言，例如 `chi_sim+eng`、`eng`、`jpn`
 - 云端 OCR 的服务地址、模型、API Key、提示词、超时
+- 翻译引擎、目标语言、LibreTranslate 地址与 API Key
 - 是否登录时自动启动
 
 切换引擎会立即重新加载。加载失败时设置不会保存，旧引擎继续可用。各引擎的配置分别保留，切换回来不会丢失。设置窗口里会实时显示当前引擎和云端目标。
@@ -245,6 +248,46 @@ sudo cmake --install build --prefix /usr
 
 在“设置 → 识别引擎”里切换。Tesseract 的品质取决于语言包和截图清晰度，中文场景建议继续用 PP-OCR。
 
+## 翻译
+
+结果窗口和图片 OCR 窗口都带翻译条：选目标语言，点“翻译”（结果窗口可按 `Ctrl+T`），
+译文显示在原文下方。翻译在后台线程执行，不会卡住界面；长文本会自动分段。
+
+“设置 → 翻译”里可选四种引擎：
+
+| 引擎 | Key | 说明 |
+|---|---|---|
+| **Google 免费** | 不需要 | 使用 `clients5.google.com` 的 Chrome 词典接口，开箱即用；非官方接口，可能被限流或失效。失败时自动回退 MyMemory |
+| **MyMemory** | 不需要 | 匿名约 5000 词/天，带邮箱可提高到 5 万词/天；质量取决于记忆库 |
+| **LibreTranslate** | 视实例而定 | 开源自托管，完全离线；默认地址 `http://localhost:5000`，公共实例通常需要 API Key |
+| **DeepSeek** | 复用云端 OCR | 翻译质量最好，按 token 计费；复用“识别 → 云端”的地址和 API Key。官方地址自动使用 `deepseek-chat` 文本模型；自定义地址若配置的是 OCR 专用模型会提示切换 |
+
+注意：
+
+- Google 和 MyMemory 都是免费/非官方接口，没有 SLA，适合轻量使用；在意稳定性时建议切换
+  LibreTranslate（自托管）或 DeepSeek。
+- 使用 Google / MyMemory / DeepSeek 时，待翻译文本会发送到对应服务；LibreTranslate
+  自托管时文本不会离开本机。
+- 免费接口会限制单次请求长度，应用按行边界自动分成约 3000 字（MyMemory 约 400 字）的小段再拼接。
+- 繁体中文在 LibreTranslate 中会映射为 `zt`，简体映射为 `zh`。
+
+配置示例：
+
+```ini
+translateEngine=google
+translateTarget=zh-CN
+libreTranslateUrl=http://localhost:5000
+libreTranslateApiKey=
+```
+
+自托管 LibreTranslate（可选）：
+
+```bash
+mkdir -p ~/.local/share/libretranslate && cd ~/.local/share/libretranslate
+curl -sL https://raw.githubusercontent.com/LibreTranslate/LibreTranslate/main/docker-compose.yml -o docker-compose.yml
+docker compose up -d
+```
+
 ## 云端 OCR：DeepSeek
 
 先澄清一下：**DeepSeek 官方 API 有视觉能力，但没有单独的 `deepseek-ocr` 模型 ID。** 官方目前通过 `deepseek-flash` 接收图片输入；DeepSeek-OCR 本身是 DeepSeek 开源的 3B OCR 模型，官方 API 没有把它作为独立端点暴露。SiliconFlow 则明确托管了 `deepseek-ai/DeepSeek-OCR`，所以之前默认用了它。
@@ -312,6 +355,12 @@ siliconflowApiKey=
 customApiKey=
 cloudPrompt=请识别图片中的所有文字，按原有行顺序输出，只输出文字，不要解释。
 cloudTimeoutSec=60
+
+# 翻译
+translateEngine=google
+translateTarget=zh-CN
+libreTranslateUrl=http://localhost:5000
+libreTranslateApiKey=
 ```
 
 各引擎的配置字段分开保存，切换引擎时不会互相覆盖；未使用的字段会保留，方便切回来。云端 API Key 也按预设分开保存：`deepseekApiKey`、`siliconflowApiKey`、`customApiKey`，切换预设时只加载对应的 Key，不会混用。旧版 `cloudApiKey` 会自动迁移到当前预设对应的槽位。
@@ -326,6 +375,8 @@ mini-ocr
 ├─ src/ocr_engine.cpp    PP-OCRv5 det + rec，OpenCV DNN，CTC 解码
 ├─ src/tesseract_engine.cpp Tesseract TSV 输出解析（可选编译）
 ├─ src/cloud_engine.cpp  OpenAI 兼容云端 OCR（DeepSeek 官方 / SiliconFlow）
+├─ src/translate.cpp      翻译后端（Google / MyMemory / LibreTranslate / DeepSeek）
+├─ src/translate_panel.*  可复用的翻译控件
 ├─ src/batch_window.h/.cpp 独立图片上传 / 批量 OCR 窗口
 ├─ src/result_window.cpp 结果浮窗
 ├─ src/history.cpp       SQLite 历史 + 历史窗口

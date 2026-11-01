@@ -24,6 +24,8 @@ add_executable(mini-ocr
     src/history.cpp
     src/result_window.cpp
     src/settings.cpp
+    src/translate.cpp
+    src/translate_panel.cpp
 )
 
 target_include_directories(mini-ocr PRIVATE ${OpenCV_INCLUDE_DIRS})

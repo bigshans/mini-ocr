@@ -7,6 +7,7 @@
 #include "platform.h"
 #include "result_window.h"
 #include "settings.h"
+#include "translate.h"
 
 #include <QAction>
 #include <QApplication>
@@ -84,6 +85,19 @@ OcrConfig ocrConfigFrom(const AppSettings& settings) {
     config.cloudApiKey = cloudApiKeyFor(settings);
     config.cloudPrompt = settings.cloudPrompt;
     config.cloudTimeoutSec = settings.cloudTimeoutSec;
+    return config;
+}
+
+TranslationConfig translationConfigFrom(const AppSettings& settings) {
+    TranslationConfig config;
+    config.engine = settings.translateEngine;
+    config.targetLang = settings.translateTarget;
+    config.libreUrl = settings.libreTranslateUrl;
+    config.libreApiKey = settings.libreTranslateApiKey;
+    config.cloudBaseUrl = settings.cloudBaseUrl;
+    config.cloudModel = settings.cloudModel;
+    config.cloudApiKey = cloudApiKeyFor(settings);
+    config.timeoutSec = settings.cloudTimeoutSec;
     return config;
 }
 
@@ -245,6 +259,7 @@ public:
         }
         if (!batchWindow_) {
             batchWindow_ = new BatchWindow();
+            batchWindow_->setTranslationConfig(translationConfigFrom(settings_));
             batchWindow_->setStartCallback([this] { startBatchRun(); });
             batchWindow_->setCancelCallback([this] { cancelBatch(); });
             connect(batchWindow_, &QObject::destroyed, this,
@@ -293,6 +308,7 @@ public:
 
         if (batchWindow_) batchWindow_->close();
         batchWindow_ = new BatchWindow();
+        batchWindow_->setTranslationConfig(translationConfigFrom(settings_));
         batchWindow_->setStartCallback([this] { startBatchRun(); });
         batchWindow_->setCancelCallback([this] { cancelBatch(); });
         connect(batchWindow_, &QObject::destroyed, this, [this] { batchWindow_ = nullptr; });
@@ -496,6 +512,8 @@ private:
         saveSettings(next);
         settings_ = next;
         autoCopy_ = next.autoCopy;
+        if (resultWindow_) resultWindow_->setTranslationConfig(translationConfigFrom(next));
+        if (batchWindow_) batchWindow_->setTranslationConfig(translationConfigFrom(next));
         if (autoCopyAction_) {
             const QSignalBlocker blocker(autoCopyAction_);
             autoCopyAction_->setChecked(autoCopy_);
@@ -572,7 +590,8 @@ private:
 
         const bool copied = autoCopy_ && Platform::copyTextToClipboard(text);
         if (resultWindow_) resultWindow_->close();
-        resultWindow_ = new ResultWindow(text, result.lines, copied);
+        resultWindow_ = new ResultWindow(text, result.lines, copied,
+                                         translationConfigFrom(settings_));
         resultWindow_->show();
         resultWindow_->raise();
         resultWindow_->activateWindow();
@@ -841,7 +860,8 @@ int main(int argc, char** argv) {
         }
         QStringList parts;
         for (const auto& line : lines) parts << line.text;
-        auto* window = new ResultWindow(parts.join(QLatin1Char('\n')), lines, false);
+        auto* window = new ResultWindow(parts.join(QLatin1Char('\n')), lines, false,
+                                        translationConfigFrom(cliSettings));
         window->show();
         return app.exec();
     }

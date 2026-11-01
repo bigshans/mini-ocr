@@ -28,6 +28,10 @@ struct AppSettings {
     QString customApiKey;
     QString cloudPrompt = QStringLiteral("请识别图片中的所有文字，按原有行顺序输出，只输出文字，不要解释。");
     int cloudTimeoutSec = 60;
+    QString translateEngine = QStringLiteral("google");
+    QString translateTarget = QStringLiteral("zh-CN");
+    QString libreTranslateUrl = QStringLiteral("http://localhost:5000");
+    QString libreTranslateApiKey;
 };
 
 AppSettings loadSettings();
@@ -72,6 +76,12 @@ private:
     QLabel* currentInfo_ = nullptr;
     QFormLayout* ocrForm_ = nullptr;
     bool presetUpdating_ = false;
+
+    QComboBox* translateEngine_ = nullptr;
+    QComboBox* translateTarget_ = nullptr;
+    QLineEdit* libreUrl_ = nullptr;
+    QLineEdit* libreApiKey_ = nullptr;
+    QFormLayout* translateForm_ = nullptr;
 
     void storeCurrentCloudKey();
     void loadCloudKey(const QString& preset);

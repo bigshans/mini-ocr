@@ -1,5 +1,8 @@
 #include "result_window.h"
 
+#include "translate.h"
+#include "translate_panel.h"
+
 #include <QClipboard>
 #include <QCursor>
 #include <QGuiApplication>
@@ -12,7 +15,8 @@
 #include <QVBoxLayout>
 
 ResultWindow::ResultWindow(const QString& text, const QVector<OcrLine>& lines,
-                           bool alreadyCopied, QWidget* parent)
+                           bool alreadyCopied, const TranslationConfig& translation,
+                           QWidget* parent)
     : QWidget(parent, Qt::Window | Qt::WindowStaysOnTopHint) {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(QStringLiteral("OCR 结果"));
@@ -41,9 +45,13 @@ ResultWindow::ResultWindow(const QString& text, const QVector<OcrLine>& lines,
     edit_->setFont(f);
 
     status_ = new QLabel(alreadyCopied ? QStringLiteral("已复制到剪贴板")
-                                       : QStringLiteral("Esc 关闭 · Ctrl+Enter 复制"),
+                                       : QStringLiteral("Esc 关闭 · Ctrl+Enter 复制 · Ctrl+T 翻译"),
                          this);
     status_->setStyleSheet(QStringLiteral("color: #2d7ff9; padding: 2px;"));
+
+    translatePanel_ = new TranslatePanel(this);
+    translatePanel_->setConfig(translation);
+    translatePanel_->setTextProvider([this] { return edit_->toPlainText(); });
 
     auto* copyButton = new QPushButton(QStringLiteral("复制"), this);
     copyButton->setDefault(true);
@@ -59,6 +67,7 @@ ResultWindow::ResultWindow(const QString& text, const QVector<OcrLine>& lines,
     layout->setSpacing(8);
     layout->addWidget(summary);
     layout->addWidget(edit_, 1);
+    layout->addWidget(translatePanel_);
     layout->addLayout(buttons);
 
     connect(copyButton, &QPushButton::clicked, this, [this] { copyToClipboard(); });
@@ -68,6 +77,9 @@ ResultWindow::ResultWindow(const QString& text, const QVector<OcrLine>& lines,
     connect(esc, &QShortcut::activated, this, &QWidget::close);
     auto* copyShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Return")), this);
     connect(copyShortcut, &QShortcut::activated, this, [this] { copyToClipboard(); });
+    auto* translateShortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+T")), this);
+    connect(translateShortcut, &QShortcut::activated, this,
+            [this] { translatePanel_->translate(edit_->toPlainText()); });
 
     QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
     if (!screen) screen = QGuiApplication::primaryScreen();
@@ -83,4 +95,8 @@ ResultWindow::ResultWindow(const QString& text, const QVector<OcrLine>& lines,
 void ResultWindow::copyToClipboard() {
     QGuiApplication::clipboard()->setText(edit_->toPlainText());
     status_->setText(QStringLiteral("已复制到剪贴板"));
+}
+
+void ResultWindow::setTranslationConfig(const TranslationConfig& translation) {
+    translatePanel_->setConfig(translation);
 }

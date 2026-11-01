@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include "ocr_backend.h"
+#include "translate.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -128,6 +129,20 @@ AppSettings loadSettings() {
                           .toString();
     out.cloudTimeoutSec =
         std::clamp(s.value(QStringLiteral("cloudTimeoutSec"), 60).toInt(), 10, 300);
+    out.translateEngine =
+        s.value(QStringLiteral("translateEngine"), QStringLiteral("google")).toString();
+    out.translateTarget =
+        s.value(QStringLiteral("translateTarget"), QStringLiteral("zh-CN")).toString();
+    out.libreTranslateUrl =
+        s.value(QStringLiteral("libreTranslateUrl"), QStringLiteral("http://localhost:5000"))
+            .toString();
+    out.libreTranslateApiKey = s.value(QStringLiteral("libreTranslateApiKey")).toString();
+    if (out.translateEngine != QStringLiteral("google") &&
+        out.translateEngine != QStringLiteral("mymemory") &&
+        out.translateEngine != QStringLiteral("libretranslate") &&
+        out.translateEngine != QStringLiteral("deepseek")) {
+        out.translateEngine = QStringLiteral("google");
+    }
 
     if (!isKnownCloudPreset(out.cloudPreset)) {
         out.cloudPreset = inferCloudPreset(out.cloudBaseUrl, out.cloudModel);
@@ -186,6 +201,10 @@ void saveSettings(const AppSettings& settings) {
     s.setValue(QStringLiteral("customApiKey"), settings.customApiKey);
     s.setValue(QStringLiteral("cloudPrompt"), settings.cloudPrompt);
     s.setValue(QStringLiteral("cloudTimeoutSec"), settings.cloudTimeoutSec);
+    s.setValue(QStringLiteral("translateEngine"), settings.translateEngine);
+    s.setValue(QStringLiteral("translateTarget"), settings.translateTarget);
+    s.setValue(QStringLiteral("libreTranslateUrl"), settings.libreTranslateUrl);
+    s.setValue(QStringLiteral("libreTranslateApiKey"), settings.libreTranslateApiKey);
     s.remove(QStringLiteral("cloudApiKey"));
     s.sync();
 }
@@ -445,6 +464,68 @@ SettingsDialog::SettingsDialog(const AppSettings& current, const QString& effect
             });
     updateBackendRows();
 
+    auto* translation = new QGroupBox(QStringLiteral("翻译"), this);
+    translateEngine_ = new QComboBox(translation);
+    translateEngine_->addItem(QStringLiteral("Google 免费（无需 Key）"),
+                              QStringLiteral("google"));
+    translateEngine_->addItem(QStringLiteral("MyMemory 免费（无需 Key）"),
+                              QStringLiteral("mymemory"));
+    translateEngine_->addItem(QStringLiteral("LibreTranslate（自托管）"),
+                              QStringLiteral("libretranslate"));
+    translateEngine_->addItem(QStringLiteral("DeepSeek（复用云端 OCR 配置）"),
+                              QStringLiteral("deepseek"));
+    int translateEngineIndex = translateEngine_->findData(current.translateEngine);
+    if (translateEngineIndex < 0) translateEngineIndex = 0;
+    translateEngine_->setCurrentIndex(translateEngineIndex);
+
+    translateTarget_ = new QComboBox(translation);
+    for (const auto& language : translationLanguages()) {
+        translateTarget_->addItem(language.second, language.first);
+    }
+    int translateTargetIndex = translateTarget_->findData(current.translateTarget);
+    if (translateTargetIndex < 0) translateTargetIndex = 0;
+    translateTarget_->setCurrentIndex(translateTargetIndex);
+
+    libreUrl_ = new QLineEdit(current.libreTranslateUrl, translation);
+    libreUrl_->setPlaceholderText(QStringLiteral("http://localhost:5000"));
+    libreApiKey_ = new QLineEdit(current.libreTranslateApiKey, translation);
+    libreApiKey_->setEchoMode(QLineEdit::Password);
+    libreApiKey_->setPlaceholderText(QStringLiteral("公共实例通常需要；自托管可留空"));
+
+    auto* translateHint = new QLabel(
+        QStringLiteral("Google / MyMemory 无需 Key，但属于非官方或限流接口，译文会发送到"
+                       "相应服务；Google 失败时会自动回退到 MyMemory。LibreTranslate 需自行部署"
+                       "（完全离线），默认地址 http://localhost:5000。DeepSeek 复用“识别 → "
+                       "云端”的地址和 API Key（官方地址自动使用 deepseek-chat 文本模型），"
+                       "翻译质量最好。"),
+        translation);
+    translateHint->setWordWrap(true);
+    translateHint->setStyleSheet(QStringLiteral("color: #777;"));
+
+    translateForm_ = new QFormLayout(translation);
+    translateForm_->addRow(QStringLiteral("翻译引擎"), translateEngine_);
+    translateForm_->addRow(QStringLiteral("目标语言"), translateTarget_);
+    translateForm_->addRow(QStringLiteral("LibreTranslate 地址"), libreUrl_);
+    translateForm_->addRow(QStringLiteral("LibreTranslate API Key"), libreApiKey_);
+    translateForm_->addRow(translateHint);
+
+    auto updateTranslateRows = [this] {
+        const bool isLibre = translateEngine_->currentData().toString() ==
+                             QStringLiteral("libretranslate");
+        translateForm_->setRowVisible(libreUrl_, isLibre);
+        translateForm_->setRowVisible(libreApiKey_, isLibre);
+    };
+    connect(translateEngine_, &QComboBox::currentIndexChanged, this,
+            [this, updateTranslateRows](int) {
+                updateTranslateRows();
+                QTimer::singleShot(0, this, [this] {
+                    if (!isVisible()) return;
+                    layout()->activate();
+                    resize(width(), sizeHint().height());
+                });
+            });
+    updateTranslateRows();
+
     auto* history = new QGroupBox(QStringLiteral("历史记录"), this);
     historyLimit_ = new QSpinBox(history);
     historyLimit_->setRange(50, 5000);
@@ -490,6 +571,7 @@ SettingsDialog::SettingsDialog(const AppSettings& current, const QString& effect
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(behavior);
     layout->addWidget(ocr);
+    layout->addWidget(translation);
     layout->addWidget(history);
     layout->addWidget(system);
     layout->addWidget(buttons);
@@ -529,6 +611,26 @@ SettingsDialog::SettingsDialog(const AppSettings& current, const QString& effect
             if (cloudModel_->text().trimmed().isEmpty()) {
                 QMessageBox::warning(this, QStringLiteral("模型为空"),
                                      QStringLiteral("请填写模型名，例如 deepseek-ai/DeepSeek-OCR。"));
+                return;
+            }
+        }
+        const QString translateEngine = translateEngine_->currentData().toString();
+        if (translateEngine == QStringLiteral("libretranslate")) {
+            const QUrl url(libreUrl_->text().trimmed());
+            if (!url.isValid() || (url.scheme() != QStringLiteral("http") &&
+                                   url.scheme() != QStringLiteral("https"))) {
+                QMessageBox::warning(
+                    this, QStringLiteral("LibreTranslate 地址无效"),
+                    QStringLiteral("请填写 http:// 或 https:// 开头的地址，"
+                                   "例如 http://localhost:5000。"));
+                return;
+            }
+        } else if (translateEngine == QStringLiteral("deepseek")) {
+            if (cloudApiKey_->text().trimmed().isEmpty()) {
+                QMessageBox::warning(
+                    this, QStringLiteral("缺少 API Key"),
+                    QStringLiteral("DeepSeek 翻译复用云端 OCR 的配置，请先填写当前预设的 "
+                                   "API Key。"));
                 return;
             }
         }
@@ -615,5 +717,14 @@ AppSettings SettingsDialog::settings() {
         out.cloudPrompt = QStringLiteral("请识别图片中的所有文字，按原有行顺序输出，只输出文字，不要解释。");
     }
     out.cloudTimeoutSec = cloudTimeout_->value();
+    out.translateEngine = translateEngine_->currentData().toString();
+    if (out.translateEngine.isEmpty()) out.translateEngine = QStringLiteral("google");
+    out.translateTarget = translateTarget_->currentData().toString();
+    if (out.translateTarget.isEmpty()) out.translateTarget = QStringLiteral("zh-CN");
+    out.libreTranslateUrl = libreUrl_->text().trimmed();
+    if (out.libreTranslateUrl.isEmpty()) {
+        out.libreTranslateUrl = QStringLiteral("http://localhost:5000");
+    }
+    out.libreTranslateApiKey = libreApiKey_->text().trimmed();
     return out;
 }

@@ -15,6 +15,8 @@ class QProgressBar;
 class QPushButton;
 class QDragEnterEvent;
 class QDropEvent;
+class TranslatePanel;
+struct TranslationConfig;
 
 class BatchWindow : public QWidget {
 public:
@@ -28,6 +30,7 @@ public:
     }
 
     void appendFiles(const QStringList& paths);
+    void setTranslationConfig(const TranslationConfig& config);
     void resetForRun();
     void setStatus(int index, const QString& status);
     void setResult(int index, const QString& text);
@@ -75,6 +78,7 @@ private:
     QPushButton* copyCurrentButton_ = nullptr;
     QPushButton* copyAllButton_ = nullptr;
     QPushButton* exportButton_ = nullptr;
+    TranslatePanel* translatePanel_ = nullptr;
 
     std::function<void()> startCallback_;
     std::function<void()> cancelCallback_;

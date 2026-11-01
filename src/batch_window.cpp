@@ -1,6 +1,7 @@
 #include "batch_window.h"
 
 #include "image_view.h"
+#include "translate_panel.h"
 
 #include <QAbstractItemView>
 #include <QClipboard>
@@ -101,8 +102,12 @@ BatchWindow::BatchWindow(const QStringList& paths, QWidget* parent)
     auto* rightSide = new QSplitter(Qt::Vertical, this);
     rightSide->addWidget(imagePane);
     rightSide->addWidget(preview_);
+    translatePanel_ = new TranslatePanel(this);
+    translatePanel_->setTextProvider([this] { return preview_->toPlainText(); });
+    rightSide->addWidget(translatePanel_);
     rightSide->setStretchFactor(0, 3);
     rightSide->setStretchFactor(1, 2);
+    rightSide->setStretchFactor(2, 0);
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
     splitter->addWidget(list_);
@@ -159,6 +164,7 @@ BatchWindow::BatchWindow(const QStringList& paths, QWidget* parent)
     connect(list_, &QListWidget::currentRowChanged, this, [this](int) {
         updatePreview();
         updateActionStates();
+        if (translatePanel_) translatePanel_->clearResult();
     });
     connect(addButton_, &QPushButton::clicked, this, [this] { addFiles(); });
     connect(removeButton_, &QPushButton::clicked, this, [this] { removeSelected(); });
@@ -181,6 +187,10 @@ BatchWindow::BatchWindow(const QStringList& paths, QWidget* parent)
 
     appendFiles(paths);
     updateActionStates();
+}
+
+void BatchWindow::setTranslationConfig(const TranslationConfig& config) {
+    if (translatePanel_) translatePanel_->setConfig(config);
 }
 
 void BatchWindow::appendFiles(const QStringList& paths) {
