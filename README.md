@@ -142,7 +142,7 @@ mini-ocr show image.png   # 识别图片并打开结果窗口
 
 ```bash
 ./scripts/package-arch.sh
-sudo pacman -U packaging/mini-ocr-0.1.0-1-x86_64.pkg.tar.zst
+sudo pacman -U packaging/mini-ocr-0.2.0-1-x86_64.pkg.tar.zst
 ```
 
 脚本会：

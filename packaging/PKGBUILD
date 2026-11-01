@@ -1,6 +1,6 @@
 # Maintainer: mini-ocr contributors
 pkgname=mini-ocr
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Lightweight screenshot and image OCR for KDE"
 arch=('x86_64')
