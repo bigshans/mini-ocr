@@ -142,7 +142,7 @@ mini-ocr show image.png   # 识别图片并打开结果窗口
 
 ```bash
 ./scripts/package-arch.sh
-sudo pacman -U packaging/mini-ocr-0.2.0-1-x86_64.pkg.tar.zst
+sudo pacman -U packaging/mini-ocr-0.2.1-1-x86_64.pkg.tar.zst
 ```
 
 脚本会：
@@ -236,7 +236,38 @@ $env:QT_DIR = "C:\Qt\6.8.3\msvc2022_64"
 sudo cmake --install build --prefix /usr
 ```
 
-安装后会得到 `/usr/bin/mini-ocr`、`/usr/share/mini-ocr/models/`、桌面文件和图标。之后快捷键直接写 `mini-ocr capture`。
+安装后会得到 `/usr/bin/mini-ocr`（启动器）、`/usr/libexec/mini-ocr/mini-ocr`（实际可执行文件）、`/usr/share/mini-ocr/models/`、桌面文件和图标。之后快捷键直接写 `mini-ocr capture`。
+
+`/usr/bin/mini-ocr` 是一个启动器：启动前会检查动态库，缺库时（例如 OpenCV 升级换了 soname）弹出对话框提示重新编译，而不是在动态加载阶段静默失败。需要直接执行二进制时可加 `-DMINI_OCR_INSTALL_LAUNCHER=OFF` 重新构建。
+
+## 通用 Linux 便携包（AppImage / tar.gz）
+
+```bash
+./scripts/build-appimage.sh
+# 产物：
+#   build-appimage/Mini_OCR-x86_64.AppImage
+#   build-appimage/mini-ocr-<版本>-linux-x86_64.tar.gz
+```
+
+两种产物都自带 Qt、OpenCV、Tesseract 和 OCR 模型，不依赖系统 OpenCV 版本，因此系统升级 OpenCV 后也不会失效。首次构建会下载 linuxdeploy/appimagetool 到 `build-appimage/tools/`。
+
+- 只要 tar.gz 或只要 AppImage：`MAKE_APPIMAGE=0 ./scripts/build-appimage.sh`、`MAKE_TARBALL=0 ./scripts/build-appimage.sh`。
+- 解压即用，不依赖 FUSE：
+
+```bash
+tar -xzf mini-ocr-<版本>-linux-x86_64.tar.gz
+./mini-ocr-<版本>-linux-x86_64/mini-ocr
+```
+
+AppImage 运行需要 FUSE 2（Arch：`fuse2`，Debian/Ubuntu：`libfuse2`）；已装 AppImageLauncher 的机器默认会被它接管，不想被接管时：
+
+```bash
+APPIMAGELAUNCHER_DISABLE=1 ./build-appimage/Mini_OCR-x86_64.AppImage
+# 或者完全绕过 binfmt/FUSE：
+./build-appimage/Mini_OCR-x86_64.AppImage --appimage-extract-and-run
+```
+
+限制：产物用构建机的 glibc，只能跑在 glibc 不比它旧的发行版上；要覆盖更老的系统，请在旧容器/旧发行版里构建。
 
 ## OCR 引擎
 

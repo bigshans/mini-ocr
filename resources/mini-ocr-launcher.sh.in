@@ -1,0 +1,101 @@
+#!/bin/sh
+# Mini OCR launcher.
+#
+# The real executable lives in ${libexecdir}/mini-ocr. Starting it through this
+# wrapper lets us detect a missing shared library (typically OpenCV after an
+# upstream soname bump, e.g. libopencv_dnn.so.500 -> libopencv_dnn.so.501) and
+# show a GUI error, instead of letting the dynamic loader fail before main()
+# with a message nobody sees (tray autostart, desktop file, global shortcut).
+set -u
+
+title="Mini OCR 无法启动"
+
+show_error() {
+    text="$1"
+    if [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+        if command -v kdialog >/dev/null 2>&1; then
+            kdialog --title "$title" --error "$text"
+            return 0
+        fi
+        if command -v zenity >/dev/null 2>&1; then
+            zenity --error --title="$title" --text="$text"
+            return 0
+        fi
+        if command -v qarma >/dev/null 2>&1; then
+            qarma --error --title="$title" --text="$text"
+            return 0
+        fi
+        if command -v xmessage >/dev/null 2>&1; then
+            xmessage -center "$title
+
+$text"
+            return 0
+        fi
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send -u critical "$title" "$text"
+            return 0
+        fi
+    fi
+    printf '%s\n%s\n' "$title" "$text" >&2
+}
+
+# Resolve this launcher to an absolute path, so the app can point its
+# autostart entry back at the launcher (and keep the diagnostics).
+self=""
+case "$0" in
+    */*) self="$0" ;;
+    *)   self=$(command -v -- "$0" 2>/dev/null || true) ;;
+esac
+if [ -n "$self" ]; then
+    self=$(readlink -f "$self" 2>/dev/null || printf '%s' "$self")
+fi
+
+resolve_real_binary() {
+    if [ -n "${MINI_OCR_BINARY:-}" ]; then
+        printf '%s' "$MINI_OCR_BINARY"
+        return
+    fi
+    case "@CMAKE_INSTALL_LIBEXECDIR@" in
+        /*)
+            printf '%s' "@CMAKE_INSTALL_LIBEXECDIR@/mini-ocr/mini-ocr"
+            ;;
+        *)
+            if [ -n "$self" ]; then
+                bindir=$(dirname "$self")
+                prefix=$(dirname "$bindir")
+                printf '%s' "$prefix/@CMAKE_INSTALL_LIBEXECDIR@/mini-ocr/mini-ocr"
+            else
+                printf '%s' "@CMAKE_INSTALL_FULL_LIBEXECDIR@/mini-ocr/mini-ocr"
+            fi
+            ;;
+    esac
+}
+
+real=$(resolve_real_binary)
+
+if [ ! -x "$real" ]; then
+    show_error "找不到程序文件：$real
+请重新安装 Mini OCR。"
+    exit 1
+fi
+
+ldd_output=$(ldd "$real" 2>&1)
+missing=$(printf '%s\n' "$ldd_output" | awk '/not found/ { print $1 }')
+
+if [ -n "$missing" ]; then
+    show_error "缺少运行所需的共享库：
+$(printf '%s\n' "$missing" | sed 's/^/  • /')
+
+系统组件升级后（通常是 OpenCV 改变了 soname），本程序需要重新编译。
+请在源码目录执行：
+  ./scripts/package-arch.sh
+  sudo pacman -U packaging/mini-ocr-*.pkg.tar.zst"
+    exit 1
+fi
+
+if [ -n "$self" ]; then
+    MINI_OCR_LAUNCHER="$self"
+    export MINI_OCR_LAUNCHER
+fi
+
+exec "$real" "$@"

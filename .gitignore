@@ -1,4 +1,5 @@
 build/
+build-appimage/
 models/*.onnx
 models/*.txt
 *.user

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(mini-ocr VERSION 0.2.0 LANGUAGES CXX)
+project(mini-ocr VERSION 0.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -82,7 +82,23 @@ else()
 endif()
 
 include(GNUInstallDirs)
-install(TARGETS mini-ocr RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+option(MINI_OCR_INSTALL_LAUNCHER
+       "Install a launcher that reports missing shared libraries in a dialog" ON)
+if(UNIX AND NOT APPLE AND MINI_OCR_INSTALL_LAUNCHER)
+    # Install the real executable into libexec and a launcher into bindir. The
+    # launcher checks the dynamic links first and shows a GUI error when a
+    # dependency is missing (e.g. OpenCV soname bump), instead of failing
+    # silently inside the dynamic loader before main() runs.
+    # Self-contained bundles (AppImage) disable this: the binary sits in bin/
+    # and nothing can be missing.
+    install(TARGETS mini-ocr RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/mini-ocr)
+    set(MINI_OCR_LAUNCHER ${CMAKE_CURRENT_BINARY_DIR}/mini-ocr-launcher)
+    configure_file(resources/mini-ocr-launcher.sh.in ${MINI_OCR_LAUNCHER} @ONLY)
+    install(PROGRAMS ${MINI_OCR_LAUNCHER}
+            RENAME mini-ocr DESTINATION ${CMAKE_INSTALL_BINDIR})
+else()
+    install(TARGETS mini-ocr RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 install(DIRECTORY models/ DESTINATION ${CMAKE_INSTALL_DATADIR}/mini-ocr/models)
 if(UNIX AND NOT APPLE)
     install(FILES resources/mini-ocr.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

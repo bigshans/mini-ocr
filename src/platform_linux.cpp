@@ -67,7 +67,11 @@ bool setAutostartEnabled(bool enabled, QString* error) {
         return false;
     }
 
-    QString exec = QCoreApplication::applicationFilePath();
+    // Point autostart at something stable: the AppImage file, the installed
+    // launcher (which reports broken dynamic links), or the binary itself.
+    QString exec = qEnvironmentVariable("APPIMAGE");
+    if (exec.isEmpty()) exec = qEnvironmentVariable("MINI_OCR_LAUNCHER");
+    if (exec.isEmpty()) exec = QCoreApplication::applicationFilePath();
     if (exec.contains(QLatin1Char(' '))) exec = QLatin1Char('"') + exec + QLatin1Char('"');
 
     const QString content =
